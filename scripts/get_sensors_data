@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+
+from robonomics_lighthouse.msg import Ask, Result
+from tempfile import NamedTemporaryFile 
+from std_msgs.msg import Int32, String, Float32
+from air_sensors.msg import air_sensors_data
+from air_sensors.srv import *
+import rospy, ipfsapi, os
+import rosbag
+
+def callback(msg):
+    if msg.model == "QmSVvKvZf5nw3uQoHpFe7jq3YonPc7Bd8gAKTDaDuMyBQW":
+        send_res = rospy.Publisher('/liability/infochan/signing/result', Result, queue_size=10)
+
+        with NamedTemporaryFile(dir="/storage/rosbag/", delete=False) as tmpfile:
+            ipfs = ipfsapi.connect()
+
+            result_file = tmpfile.name
+            rospy.loginfo('Start recording to %s...', result_file)
+
+            recorder = rosbag.Bag(result_file, 'w')
+
+            output = os.popen("rrdtool  lastupdate /storage/smg2/radiation.rrd").read()
+            radiation = float(output.split()[2])
+            rad = Float32()
+            rad.data = radiation
+            recorder.write('/sensors/radiation', rad)
+            
+            rospy.wait_for_service("/air_sensors_data")
+            arduinoService = rospy.ServiceProxy('/air_sensors_data', air_sensors_response)
+            res = arduinoService(False)
+
+            secs = Int32()
+            secs.data = res.message.header.stamp.secs # int
+            recorder.write('/sensors/secs', secs)
+
+            dust = Float32()
+            dust.data = res.message.dust # float32
+            recorder.write('/sensors/dust', dust)
+
+            CO = Int32()
+            CO.data = res.message.CO # int16
+            recorder.write('/sensors/co', CO)
+
+            LPG = Int32()
+            LPG.data = res.message.LPG # int16
+            recorder.write('/sensors/lpg', LPG)
+
+            methane = Int32()
+            methane.data = res.message.methane # int16
+            recorder.write('/sensors/methane', methane)
+
+            smoke = Int32()
+            smoke.data = res.message.smoke # int16
+            recorder.write('/sensors/smoke', smoke)
+
+            hydrogen = Int32()
+            hydrogen.data = res.message.hydrogen # int 16
+            recorder.write('/sensors/hydrogen', hydrogen)
+
+            recorder.close()
+
+            ipfs_response = ipfs.add(result_file)
+            try:
+                result = ipfs_response['Hash']
+            except TypeError:
+                rospy.logwarn('IPFS add proceeding error: %s', ipfs_response[1]['Message'])
+                result = ipfs_response[0]['Hash']
+
+            res = Result()
+            res.liability = "0x0000000000000000000000000000000000000000"
+            res.result = result
+            rospy.loginfo(result)
+            send_res.publish(res)
+
+
+if __name__ == '__main__':
+    rospy.init_node('smg2_radiation')
+    rospy.Subscriber('/liability/infochan/incoming/ask', Ask, callback)
+    rospy.spin()
