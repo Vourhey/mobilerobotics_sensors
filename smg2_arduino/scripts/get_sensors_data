@@ -1,5 +1,26 @@
 #!/usr/bin/env python3
 
+# TODO
+'''
+
+собрать все в одно сообщение sensors_data
+secs
+radiation
+dust
+co
+lpg
+methane
+smoke
+hydrogen
+
+
+вместо liability - адрес просящего
+
+добавить соль
+
+'''
+
+
 from robonomics_lighthouse.msg import Ask, Result
 from tempfile import NamedTemporaryFile 
 from std_msgs.msg import Int32, String, Float32
